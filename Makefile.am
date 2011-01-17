@@ -10,3 +10,7 @@ adak_mac_SOURCES = \
 
 adak_mac_LDADD = \
 	adak.lds
+
+EXTRA_DIST = \
+	NEWS \
+	TODO
