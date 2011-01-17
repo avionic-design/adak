@@ -39,6 +39,7 @@ static const char DEFAULT_INTERFACE[] = "eth0";
 struct context {
 	const char *interface;
 	int help;
+	int version;
 };
 
 int eth_get_hwaddr(const char *interface, uint8_t *hwaddr, size_t size)
@@ -295,7 +296,8 @@ static const char help_summary[] = ""
 static const char help_options[] = ""
 	"Options:\n"
 	"    -h, --help                   show this help screen\n"
-	"    -i, --interface INTERFACE    network interface to use\n";
+	"    -i, --interface INTERFACE    network interface to use\n"
+	"    -V, --version                display program version and exit\n";
 
 static void usage(FILE *fp, const char *program)
 {
@@ -326,6 +328,7 @@ int main(int argc, char *argv[])
 	static const struct option options[] = {
 		{ "help", 0, NULL, 'h' },
 		{ "interface", 1, NULL, 'i' },
+		{ "version", 0, NULL, 'V' },
 		{ NULL, 0, NULL, 0 }
 	};
 	struct context context;
@@ -334,8 +337,9 @@ int main(int argc, char *argv[])
 	memset(&context, 0, sizeof(context));
 	context.interface = DEFAULT_INTERFACE;
 	context.help = 0;
+	context.version = 0;
 
-	while ((opt = getopt_long(argc, argv, "hi:", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "hi:V", options, NULL)) != -1) {
 		switch (opt) {
 		case 'h':
 			context.help = 1;
@@ -343,6 +347,10 @@ int main(int argc, char *argv[])
 
 		case 'i':
 			context.interface = optarg;
+			break;
+
+		case 'V':
+			context.version = 1;
 			break;
 
 		default:
@@ -353,6 +361,11 @@ int main(int argc, char *argv[])
 
 	if (context.help) {
 		usage(stdout, argv[0]);
+		return 0;
+	}
+
+	if (context.version) {
+		puts(PACKAGE " " VERSION);
 		return 0;
 	}
 
