@@ -24,6 +24,7 @@
 #include <sys/ioctl.h>
 
 #include "command.h"
+#include "utils.h"
 
 #if __WORDSIZE == 64
 #  define FMT_UINT64 "lu"
@@ -365,7 +366,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (context.version) {
-		puts(PACKAGE " " VERSION);
+		adak_program_version(stdout, argv[0]);
 		return 0;
 	}
 
