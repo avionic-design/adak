@@ -11,6 +11,10 @@
 
 #include <stdio.h>
 
+#ifndef min
+#  define min(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
 extern void adak_program_version(FILE *fp, const char *program);
 
 #endif /* UTILS_H */

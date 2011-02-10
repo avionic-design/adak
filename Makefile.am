@@ -6,6 +6,9 @@ noinst_LTLIBRARIES = \
 bin_PROGRAMS = \
 	adak-mac
 
+sbin_PROGRAMS = \
+	adak-fpga
+
 libadak_la_SOURCES = \
 	command.c \
 	command.h \
@@ -16,6 +19,13 @@ adak_mac_SOURCES = \
 	mac.c
 
 adak_mac_LDADD = \
+	libadak.la \
+	adak.lds
+
+adak_fpga_SOURCES = \
+	fpga.c
+
+adak_fpga_LDADD = \
 	libadak.la \
 	adak.lds
 
