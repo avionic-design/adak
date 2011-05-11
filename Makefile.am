@@ -23,7 +23,9 @@ adak_mac_LDADD = \
 	adak.lds
 
 adak_fpga_SOURCES = \
-	fpga.c
+	fpga.c \
+	stream.c \
+	stream.h
 
 adak_fpga_LDADD = \
 	libadak.la \

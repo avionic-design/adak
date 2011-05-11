@@ -24,6 +24,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "stream.h"
 #include "utils.h"
 
 static const char DEFAULT_FILE[] = "/dev/mtd0";
@@ -82,143 +83,16 @@ static int parse_command_line(struct cli_opts *opts, int argc, char *argv[])
 	return 0;
 }
 
-struct stream {
-	size_t capacity;
-	size_t length;
-	size_t offset;
-	void *buf;
-
-	size_t position;
-	int fd;
-};
-
-struct stream *stream_open(const char *filename)
+static off_t stream_find(struct stream *stream, const void *buf, size_t len)
 {
-	struct stream *stream;
-	int fd;
-
-	fd = open(filename, O_RDONLY);
-	if (fd < 0)
-		return NULL;
-
-	stream = calloc(1, sizeof(*stream));
-	if (!stream)
-		return NULL;
-
-	stream->buf = calloc(1, 512);
-	if (!stream->buf) {
-		free(stream);
-		return NULL;
-	}
-
-	stream->capacity = 512;
-	stream->length = 0;
-	stream->offset = 0;
-
-	stream->position = 0;
-	stream->fd = fd;
-
-	return stream;
-}
-
-void stream_close(struct stream *stream)
-{
-	assert(stream != NULL);
-
-	if (stream->buf)
-		free(stream->buf);
-
-	close(stream->fd);
-	free(stream);
-}
-
-ssize_t stream_fill(struct stream *stream)
-{
-	if (stream->offset >= stream->length) {
-		ssize_t err;
-
-		stream->position += stream->length;
-
-		err = read(stream->fd, stream->buf, stream->capacity);
-		if (err < 0)
-			return errno;
-
-		stream->length = err;
-		stream->offset = 0;
-	}
-
-	return stream->length - stream->offset;
-}
-
-ssize_t stream_skip(struct stream *stream, size_t amount)
-{
-	size_t skipped = 0;
-
-	while (skipped < amount) {
-		size_t remaining;
-		size_t count;
-
-		ssize_t err = stream_fill(stream);
-		if (err < 0)
-			return err;
-
-		remaining = stream->length - stream->offset;
-		count = amount - skipped;
-
-		if (count < remaining) {
-			stream->offset += count;
-			skipped += count;
-		} else {
-			stream->offset += remaining;
-			skipped += remaining;
-		}
-	}
-
-	return skipped;
-}
-
-ssize_t stream_read(struct stream *stream, void *buf, size_t len)
-{
-	size_t pos = 0;
-	ssize_t err;
-	size_t copy;
-
-	while ((len - pos) > (stream->length - stream->offset)) {
-		if (stream->offset < stream->length) {
-			size_t size = stream->length - stream->offset;
-			memcpy(buf, stream->buf + stream->offset, size);
-			stream->offset += size;
-			pos += size;
-		}
-
-		err = stream_fill(stream);
-		if (err <= 0) {
-			if (err == 0)
-				break;
-
-			return err;
-		}
-	}
-
-	copy = min(len - pos, stream->length - stream->offset);
-	if (copy > 0) {
-		memcpy(buf + pos, stream->buf + stream->offset, copy);
-		stream->offset += copy;
-	}
-
-	return pos + copy;
-}
-
-ssize_t stream_find(struct stream *stream, const void *buf, size_t len)
-{
-	const uint8_t *ptr = buf;
-	ssize_t found = -ENODATA;
-	const uint8_t *bufptr;
-	size_t match = 0;
+	off_t found = -ENODATA;
+	off_t match = 0;
 	ssize_t err;
 
 	while (found < 0) {
-		err = stream_fill(stream);
+		uint8_t byte;
+
+		err = stream_read(stream, &byte, sizeof(byte));
 		if (err <= 0) {
 			if (err < 0)
 				found = err;
@@ -226,60 +100,23 @@ ssize_t stream_find(struct stream *stream, const void *buf, size_t len)
 			break;
 		}
 
-		bufptr = stream->buf;
-
-		for (stream->offset = stream->offset; stream->offset < stream->length; stream->offset++) {
-			if (bufptr[stream->offset] == ptr[match]) {
-				if (match == (len - 1)) {
-					stream->offset -= len - 1;
-					found = stream->position + stream->offset;
-					break;
-				}
-
-				match++;
-			} else {
-				stream->offset -= match;
-				match = 0;
+		if (((uint8_t *)buf)[match] == byte) {
+			if (match == (len - 1)) {
+				found = stream_seek(stream, -len, SEEK_CUR);
+				break;
 			}
+
+			match++;
+		} else if (match > 0) {
+			stream_seek(stream, -match, SEEK_CUR);
+			match = 0;
 		}
 	}
 
 	return found;
 }
 
-ssize_t stream_tell(struct stream *stream)
-{
-	return stream->position + stream->offset;
-}
-
-ssize_t stream_read_byte(struct stream *stream, uint8_t *value)
-{
-	return stream_read(stream, value, sizeof(*value));
-}
-
-ssize_t stream_read_be16(struct stream *stream, uint16_t *value)
-{
-	uint16_t data = 0;
-	ssize_t ret;
-
-	ret = stream_read(stream, &data, sizeof(data));
-	*value = be16toh(data);
-
-	return ret;
-}
-
-ssize_t stream_read_be32(struct stream *stream, uint32_t *value)
-{
-	uint32_t data = 0;
-	ssize_t ret;
-
-	ret = stream_read(stream, &data, sizeof(data));
-	*value = be32toh(data);
-
-	return ret;
-}
-
-uint32_t revl(uint32_t value)
+static uint32_t revl(uint32_t value)
 {
 	uint32_t ret = value;
 
@@ -308,7 +145,7 @@ static int stream_find_user_code(struct stream *stream)
 	if (err < 0)
 		return err;
 
-	err = stream_skip(stream, sizeof(header_end));
+	err = stream_seek(stream, sizeof(header_end), SEEK_CUR);
 	if (err < 0)
 		return err;
 
@@ -316,7 +153,7 @@ static int stream_find_user_code(struct stream *stream)
 	if (err < 0)
 		return err;
 
-	err = stream_skip(stream, sizeof(reset_addr) + 2);
+	err = stream_seek(stream, sizeof(reset_addr) + 2, SEEK_CUR);
 	if (err < 0)
 		return err;
 
@@ -324,7 +161,7 @@ static int stream_find_user_code(struct stream *stream)
 	if (err < 0)
 		return err;
 
-	err = stream_tell(stream);
+	err = stream_seek(stream, 0, SEEK_CUR);
 	if (err < 0)
 		return err;
 
@@ -341,21 +178,13 @@ static int stream_find_user_code(struct stream *stream)
 	if (err < 0)
 		return err;
 
-	err = stream_skip(stream, sizeof(frame_stop));
-	if (err < 0)
-		return err;
-
-	err = stream_tell(stream);
+	err = stream_seek(stream, sizeof(frame_stop), SEEK_CUR);
 	if (err < 0)
 		return err;
 
 	end = err;
 
-	err = stream_skip(stream, (end - start) * (frame_count - 1));
-	if (err < 0)
-		return err;
-
-	err = stream_tell(stream);
+	err = stream_seek(stream, (end - start) * (frame_count - 1), SEEK_CUR);
 	if (err < 0)
 		return err;
 
@@ -363,7 +192,7 @@ static int stream_find_user_code(struct stream *stream)
 	if (err < 0)
 		return err;
 
-	err = stream_skip(stream, sizeof(end_marker));
+	err = stream_seek(stream, sizeof(end_marker), SEEK_CUR);
 	if (err < 0)
 		return err;
 
@@ -383,11 +212,37 @@ static ssize_t stream_read_user_code(struct stream *stream, uint32_t *code)
 	return 0;
 }
 
+#define USER_CODE_RELEASE (1 << 31)
+
+static const struct {
+	uint16_t platform;
+	const char *name;
+} platform_names[] = {
+	{ 0xff7, "Medatom" },
+	{ 0, NULL },
+};
+
+static const char *lookup_platform_name(uint16_t platform)
+{
+	unsigned int i;
+
+	for (i = 0; platform_names[i].name; i++) {
+		if (platform_names[i].platform == platform)
+			return platform_names[i].name;
+	}
+
+	return NULL;
+}
+
 int main(int argc, char *argv[])
 {
 	uint32_t user_code = 0;
 	struct stream *stream;
 	struct cli_opts opts;
+	uint16_t platform;
+	const char *name;
+	uint8_t major;
+	uint8_t minor;
 	ssize_t err;
 
 	err = parse_command_line(&opts, argc, argv);
@@ -406,9 +261,9 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	stream = stream_open(opts.file);
-	if (!stream) {
-		fprintf(stderr, "stream_open(): %s\n", strerror(errno));
+	err = stream_open(&stream, opts.file, 512);
+	if (err < 0) {
+		fprintf(stderr, "stream_open(): %s\n", strerror(-err));
 		return 1;
 	}
 
@@ -420,7 +275,22 @@ int main(int argc, char *argv[])
 	if (err < 0)
 		return EIO;
 
-	printf("user-code: %08x\n", user_code);
+	platform = (user_code >> 16) & 0xfff;
+	major = (user_code >> 8) & 0xff;
+	minor = (user_code >> 0) & 0xff;
+
+	name = lookup_platform_name(platform);
+	if (!name)
+		printf("Unknown (%#x)", platform);
+	else
+		printf("%s", name);
+
+	printf(" v%u.%u", major, minor);
+
+	if ((user_code & USER_CODE_RELEASE) == 0)
+		printf(" (unreleased)");
+
+	printf("\n");
 
 	stream_close(stream);
 	return 0;
