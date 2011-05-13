@@ -106,12 +106,14 @@ off_t stream_seek(struct stream *stream, off_t offset, int whence)
 			stream->offset = offset % stream->capacity;
 			stream->length = 0;
 		} else {
-			if (-offset >= stream->offset) {
-				fprintf(stderr, "cannot seek backwards across "
-						"block boundary\n");
-				exit(1);
-			} else {
+			if (-offset < stream->offset)
 				stream->offset += offset;
+			else {
+				/*
+				 * FIXME: Implement seeking backwards across
+				 *        a block boundary.
+				 */
+				return -ENXIO;
 			}
 		}
 		break;

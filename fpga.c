@@ -115,7 +115,10 @@ static off_t stream_find(struct stream *stream, const void *buf, size_t len)
 
 			match++;
 		} else if (match > 0) {
-			stream_seek(stream, -match, SEEK_CUR);
+			err = stream_seek(stream, -match, SEEK_CUR);
+			if (err < 0)
+				break;
+
 			match = 0;
 		}
 	}
