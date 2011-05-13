@@ -35,15 +35,22 @@ struct cli_opts {
 	bool version;
 };
 
-static const char options_help[] = "Options:\n"
-	"  -f, --file      Path to filename to extract the FPGA version from.\n"
+static const char help_summary[] = ""
+	"Usage: %s [options]\n"
+	"\n"
+	"Extract FPGA version information from a bitfile or an MTD device.\n"
+	"\n";
+
+static const char help_options[] = "Options:\n"
+	"  -f, --file      Path to bitfile or MTD device file.\n"
 	"  -h, --help      Display help screen and exit.\n"
 	"  -V, --version   Display program version and exit.\n";
 
 static void usage(FILE *fp, const char *program)
 {
-	fprintf(fp, "Usage: %s [options]\n", program);
-	fputs(options_help, fp);
+	fprintf(fp, help_summary, program);
+	fputs(help_options, fp);
+	fputs("\n", fp);
 }
 
 static int parse_command_line(struct cli_opts *opts, int argc, char *argv[])
