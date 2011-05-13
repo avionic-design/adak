@@ -273,17 +273,24 @@ int main(int argc, char *argv[])
 
 	err = stream_open(&stream, opts.file, 512);
 	if (err < 0) {
-		fprintf(stderr, "stream_open(): %s\n", strerror(-err));
+		fprintf(stderr, "%s: %s: %s\n", argv[0], opts.file,
+				strerror(-err));
 		return 1;
 	}
 
 	err = stream_find_user_code(stream);
-	if (err < 0)
-		return ENXIO;
+	if (err < 0) {
+		fprintf(stderr, "%s: %s: version information not found\n",
+				argv[0], opts.file);
+		return 1;
+	}
 
 	err = stream_read_user_code(stream, &user_code);
-	if (err < 0)
-		return EIO;
+	if (err < 0) {
+		fprintf(stderr, "%s: %s: cannot read version information\n",
+				argv[0], opts.file);
+		return 1;
+	}
 
 	platform = (user_code >> 16) & 0xfff;
 	major = (user_code >> 8) & 0xff;
