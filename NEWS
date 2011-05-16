@@ -1,3 +1,6 @@
+Release x.y.z (YYYY-MM-DD)
+==========================
+
 Release 0.2.0 (2011-05-16)
 ==========================
 - Add adak-fpga utility that can be used to read the FPGA release information
