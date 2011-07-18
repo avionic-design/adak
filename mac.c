@@ -244,13 +244,13 @@ static int serial_exec(int argc, char *argv[], void *data)
 	}
 
 	for (i = 0; i < ETH_ALEN; i++) {
-		if (mask & (1 << (i + 1))) {
+		if (mask & BIT(i + 1)) {
 			serial = (serial << 8) | hwaddr[i];
 			bits += 8;
 		}
 	}
 
-	max = (1 << bits) - 1;
+	max = BIT(bits) - 1;
 	i = 0;
 
 	while (max) {
