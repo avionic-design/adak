@@ -222,7 +222,7 @@ static ssize_t stream_read_user_code(struct stream *stream, uint32_t *code)
 	return 0;
 }
 
-#define USER_CODE_RELEASE (1 << 31)
+#define USER_CODE_UNRELEASED (1 << 31)
 
 static const struct {
 	uint16_t platform;
@@ -304,7 +304,7 @@ int main(int argc, char *argv[])
 
 	printf(" v%u.%u", major, minor);
 
-	if ((user_code & USER_CODE_RELEASE) == 0)
+	if (user_code & USER_CODE_UNRELEASED)
 		printf(" (unreleased)");
 
 	printf("\n");
