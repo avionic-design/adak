@@ -4,7 +4,8 @@ noinst_LTLIBRARIES = \
 	libadak.la
 
 bin_PROGRAMS = \
-	adak-mac
+	adak-mac \
+	adak-sx8634
 
 sbin_PROGRAMS = \
 	adak-fpga
@@ -21,6 +22,18 @@ adak_mac_SOURCES = \
 adak_mac_LDADD = \
 	libadak.la \
 	adak.lds
+
+adak_sx8634_SOURCES = \
+	blkdev.c \
+	blkdev.h \
+	hexdump.c \
+	hexdump.h \
+	i2c.c \
+	i2c.h \
+	sx8634.c
+
+adak_sx8634_LDADD = \
+	libadak.la
 
 adak_fpga_SOURCES = \
 	fpga.c \
