@@ -16,14 +16,14 @@ AC_PROG_INSTALL
 
 CFLAGS="$CFLAGS -Wall"
 
+AC_MSG_CHECKING([whether to treat warnings as errors])
 AC_ARG_ENABLE([werror],
 	[AS_HELP_STRING([--enable-werror],
-		[Treat warnings as errors (default: enabled)])],
+		[Treat warnings as errors (default: no)])],
 		[enable_werror="$enableval"],
-		[enable_werror=yes])
-if test "x$enable_werror" = "xyes"; then
-	CFLAGS="$CFLAGS -Werror"
-fi
+		[enable_werror=no])
+AS_IF([test "x$enable_werror" = "xyes"], [CFLAGS="$CFLAGS -Werror"])
+AC_MSG_RESULT([$enable_werror])
 
 COMMAND_ALIGN=32
 AC_DEFINE_UNQUOTED([COMMAND_ALIGN], [$COMMAND_ALIGN],
