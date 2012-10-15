@@ -307,7 +307,7 @@ static int cpld_enable_cfg_if_transparent(int fd, uint8_t slave)
 	uint8_t cmd_buf[] = {0x74, 0x08, 0x00};
 	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 
-	return ret ? ret : cpld_busy_wait(fd, slave, 0);
+	return ret ? ret : cpld_check_status_failed(fd, slave, 0);
 }
 
 /* Offline mode -> user logic stops */
@@ -340,9 +340,10 @@ static int cpld_erase(int fd, uint8_t slave, uint8_t mode)
 static int cpld_erase_ufm(int fd, uint8_t slave)
 {
 	uint8_t cmd_buf[] = {0xCB, 0x00, 0x00, 0x00};
+	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
+							 NULL, 0);
 
-	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						  NULL, 0);
+	return ret ? ret : cpld_busy_wait(fd, slave, 0);
 }
 
 /* EN required */
@@ -495,12 +496,24 @@ static int cpld_read_fea_bits(int fd, uint8_t slave, uint16_t *fea_bits)
 	return 0;
 }
 
+static int cpld_bypass(int fd, uint8_t slave)
+{
+	uint8_t cmd_buf[] = {0xFF, 0xFF, 0xFF, 0xFF};
+
+	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
+}
+
 static int cpld_disable_cfg_if(int fd, uint8_t slave)
 {
 	uint8_t cmd_buf[] = {0x26, 0x00, 0x00};
 	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 
-	return ret ? ret : cpld_busy_wait(fd, slave, 0);
+	if (ret)
+		return ret;
+
+	ret = cpld_busy_wait(fd, slave, 0);
+
+	return ret ? ret : cpld_bypass(fd, slave);
 }
 
 static int cpld_refresh(int fd, uint8_t slave)
@@ -550,13 +563,6 @@ static int cpld_read_cfg_flash_page(int fd, uint8_t slave, uint8_t *dest,
 	memcpy(dest, rbuf, min(size, ARRAY_SIZE(rbuf)));
 
 	return 0;
-}
-
-static int cpld_bypass(int fd, uint8_t slave)
-{
-	uint8_t cmd_buf[] = {0xFF, 0xFF, 0xFF, 0xFF};
-
-	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 }
 
  /*!
