@@ -56,6 +56,11 @@
 			printf(fmt, ##arg);				\
 	}
 
+#define info_print(p2cli, fmt, arg...)		\
+	{										\
+		if (p2cli->verbose > 0)	\
+			printf(fmt, ##arg);				\
+	}
 
 /* 16 bytes per config page */
 #define CPLD_CFG_PAGE_SIZE				16
@@ -1108,43 +1113,45 @@ static int parse_jedec_file(struct cli *cli, FILE *fp)
 
 static int exec_read(struct cli *cli, int argc, char *argv[])
 {
-	int ret, ofd;
+	int ret = -EINVAL, ofd;
 	char wbuf[256];
 	uint64_t f_row;
 	uint32_t usercode, devid;
 	uint16_t fea_bits;
 	struct cpld_device *cpld;
 
+	info_print(cli, "Dumping CPLD data to file...\n");
+
 	if (cli->output_file == NULL) {
 		warn_print(cli, "%s: Output file must be specified for read command\n",
 				   __func__);
-		return -EINVAL;
+		goto exec_read_out;
 	}
 
 	ofd = open(cli->output_file, O_WRONLY | O_CREAT);
 	if (ofd < 0) {
 		error_print(cli, "%s: opening output file '%s' failed\n",
 					__func__, cli->output_file);
-		return -EINVAL;
+		goto exec_read_out;
 	}
 
 	ret = cpld_read_devid(cli->fd, cli->slave, &devid);
 	if (ret) {
 		error_print(cli, "%s: reading DeviceID failed\n", __func__);
-		goto exec_read_out;
+		goto exec_read_end;
 	}
 
 	cpld = find_cpld_dev_by_id(devid);
 	if (!cpld) {
 		error_print(cli, "%s: couldn't match DeviceID [0x%08"PRIX32"]\n",
 					__func__, devid);
-		goto exec_read_out;
+		goto exec_read_end;
 	}
 
 	ret = cpld_read_usercode(cli->fd, cli->slave, &usercode);
 	if (ret) {
 		error_print(cli, "%s: reading usercode failed\n", __func__);
-		goto exec_read_out;
+		goto exec_read_end;
 	}
 
 	/* TODO: fix static width, width must match fuse count width */
@@ -1157,7 +1164,7 @@ static int exec_read(struct cli *cli, int argc, char *argv[])
 			ret = -errno;
 			error_print(cli, "%s: writing fuse count and link field failed\n",
 						__func__);
-			goto exec_read_out;
+			goto exec_read_end;
 		}
 	}
 
@@ -1165,32 +1172,32 @@ static int exec_read(struct cli *cli, int argc, char *argv[])
 	if (ret) {
 		error_print(cli, "%s: enabling cfg if (transparent) failed\n",
 					__func__);
-		goto exec_read_out;
+		goto exec_read_end;
 	}
 
 	ret = cpld_set_flash_address(cli->fd, cli->slave,
 								 CPLD_MEM_CFG_FLASH, 0);
 	if (ret) {
 		error_print(cli, "%s: setting flash address failed\n", __func__);
-		goto exec_read_out;
+		goto exec_read_end;
 	}
 
 	ret = read_cfm_to_fd(cli, ofd);
 	if (ret) {
 		error_print(cli, "%s: reading CPLD data into memory failed\n", __func__);
-		goto exec_read_out;
+		goto exec_read_end;
 	}
 
 	ret = cpld_read_feature_row(cli->fd, cli->slave, &f_row);
 	if (ret) {
 		error_print(cli, "%s: reading feature row failed\n", __func__);
-		goto exec_read_out;
+		goto exec_read_end;
 	}
 
 	ret = cpld_read_fea_bits(cli->fd, cli->slave, &fea_bits);
 	if (ret) {
 		error_print(cli, "%s: reading FEA bits failed\n", __func__);
-		goto exec_read_out;
+		goto exec_read_end;
 	}
 
 	ret = snprintf(wbuf, ARRAY_SIZE(wbuf), "EH%016"PRIX64"\n%04"PRIX16"*\n"
@@ -1206,8 +1213,11 @@ static int exec_read(struct cli *cli, int argc, char *argv[])
 		error_print(cli, "%s: disabling cfg if failed\n", __func__);
 	}
 
-exec_read_out:
+exec_read_end:
 	close(ofd);
+
+exec_read_out:
+	info_print(cli, "Dumping CPLD %s\n", ret ? "failed" : "was successful");
 	return ret;
 }
 
@@ -1217,10 +1227,13 @@ static int exec_write(struct cli *cli, int argc, char *argv[])
 	FILE *fp;
 	uint8_t mem = CPLD_ERASE_CONFIG_FLASH | CPLD_ERASE_UFM;
 
+	info_print(cli, "Writing to CPLD...\n");
+
 	if (cli->input_file == NULL) {
 		error_print(cli, "%s: input file must be speciefied for programming "
 						 "the device\n", __func__);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto exec_write_out;
 	}
 
 	fp = fopen(cli->input_file, "r");
@@ -1228,7 +1241,7 @@ static int exec_write(struct cli *cli, int argc, char *argv[])
 		ret = -errno;
 		error_print(cli, "%s: opening input file failed '%s'",
 					__func__, cli->input_file);
-		return ret;
+		goto exec_write_out;
 	}
 
 	ret = parse_jedec_file(cli, fp);
@@ -1359,6 +1372,9 @@ exec_write_end:
 	}
 
 	fclose(fp);
+
+exec_write_out:
+	info_print(cli, "Writing to CPLD %s\n", ret ? "failed" : "was successful");
 	return ret;
 }
 
@@ -1366,16 +1382,19 @@ static int exec_verify(struct cli *cli, int argc, char *argv[])
 {
 	int ret, err, i;
 
+	info_print(cli, "Verifying CPLD...\n");
+
 	if (cli->jedec_file.file_valid == 0) {
 		error_print(cli, "%s: write must be performed prior to verify\n",
 					__func__);
-		return -ENODATA;
+		ret = -ENODATA;
+		goto exec_verify_out;
 	}
 
 	ret = cpld_enable_cfg_if_transparent(cli->fd, cli->slave);
 	if (ret) {
 		error_print(cli, "%s: enabling cfg if failed\n", __func__);
-		return ret;
+		goto exec_verify_out;
 	}
 
 	ret = cpld_set_flash_address(cli->fd, cli->slave, CPLD_MEM_CFG_FLASH, 0);
@@ -1399,6 +1418,8 @@ exec_verify_end:
 			ret = err;
 	}
 
+exec_verify_out:
+	info_print(cli, "Verifying CPLD %s\n", ret ? "failed" : "was successful");
 	return ret;
 }
 
@@ -1411,29 +1432,31 @@ static int exec_devinfo(struct cli *cli, int argc, char *argv[])
 	struct cpld_feature_row frow;
 	struct cpld_device *cpld;
 
+	info_print(cli, "Reading CPLD info...\n");
+
 	ret = cpld_read_devid(cli->fd, cli->slave, &devid);
 	if (ret) {
 		error_print(cli, "%s: reading DeviceID failed\n", __func__);
-		return ret;
+		goto exec_devinfo_out;
 	}
 
 	ret = cpld_read_traceid(cli->fd, cli->slave, &traceid);
 	if (ret) {
-		error_print(cli,"%s: reading TraceID failed\n", __func__);
-		return ret;
+		error_print(cli, "%s: reading TraceID failed\n", __func__);
+		goto exec_devinfo_out;
 	}
 
 	ret = cpld_read_usercode(cli->fd, cli->slave, &usercode);
 	if (ret) {
 		error_print(cli, "%s: reading usercode failed\n", __func__);
-		return ret;
+		goto exec_devinfo_out;
 	}
 
 	ret = cpld_enable_cfg_if_transparent(cli->fd, cli->slave);
 	if (ret) {
 		error_print(cli, "%s: enablind cfg if (transparent) failed\n",
 					__func__);
-		return ret;
+		goto exec_devinfo_out;
 	}
 
 	ret = cpld_read_feature_row(cli->fd, cli->slave, (uint64_t *) &frow);
@@ -1466,7 +1489,6 @@ static int exec_devinfo(struct cli *cli, int argc, char *argv[])
 
 
 exec_devinfo_end:
-
 	err = cpld_disable_cfg_if(cli->fd, cli->slave);
 	if (err) {
 		error_print(cli, "%s: disabling cfg if failed\n", __func__);
@@ -1474,6 +1496,8 @@ exec_devinfo_end:
 			ret = err;
 	}
 
+exec_devinfo_out:
+	info_print(cli, "Reading CPLD info %s\n", ret ? "failed" : "was successful");
 	return ret;
 }
 
