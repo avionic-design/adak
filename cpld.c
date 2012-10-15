@@ -1413,19 +1413,19 @@ static int exec_devinfo(struct cli *cli, int argc, char *argv[])
 
 	ret = cpld_read_devid(cli->fd, cli->slave, &devid);
 	if (ret) {
-		printf("%s: reading DeviceID failed\n", __func__);
+		error_print(cli, "%s: reading DeviceID failed\n", __func__);
 		return ret;
 	}
 
 	ret = cpld_read_traceid(cli->fd, cli->slave, &traceid);
 	if (ret) {
-		printf("%s: reading TraceID failed\n", __func__);
+		error_print(cli,"%s: reading TraceID failed\n", __func__);
 		return ret;
 	}
 
 	ret = cpld_read_usercode(cli->fd, cli->slave, &usercode);
 	if (ret) {
-		printf("%s: reading usercode failed\n", __func__);
+		error_print(cli, "%s: reading usercode failed\n", __func__);
 		return ret;
 	}
 
@@ -1438,13 +1438,13 @@ static int exec_devinfo(struct cli *cli, int argc, char *argv[])
 
 	ret = cpld_read_feature_row(cli->fd, cli->slave, (uint64_t *) &frow);
 	if (ret) {
-		printf("%s: reading feature row failed\n", __func__);
+		error_print(cli, "%s: reading feature row failed\n", __func__);
 		goto exec_devinfo_end;
 	}
 
 	ret = cpld_read_fea_bits(cli->fd, cli->slave, &fea_bits);
 	if (ret) {
-		printf("%s: reading FEA bits failed\n", __func__);
+		error_print(cli, "%s: reading FEA bits failed\n", __func__);
 		goto exec_devinfo_end;
 	}
 
@@ -1469,7 +1469,7 @@ exec_devinfo_end:
 
 	err = cpld_disable_cfg_if(cli->fd, cli->slave);
 	if (err) {
-		printf("%s: disabling cfg if failed\n", __func__);
+		error_print(cli, "%s: disabling cfg if failed\n", __func__);
 		if (!ret)
 			ret = err;
 	}
