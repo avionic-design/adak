@@ -9,6 +9,7 @@ bin_PROGRAMS = \
 
 sbin_PROGRAMS = \
 	adak-fpga \
+	adak-cpld \
 	adak-usb-reset
 
 libadak_la_SOURCES = \
@@ -45,8 +46,18 @@ adak_fpga_LDADD = \
 	libadak.la \
 	adak.lds
 
+adak_cpld_SOURCES = \
+	i2c.c \
+	i2c.h \
+	cpld.c
+
+adak_cpld_LDADD = \
+	libadak.la \
+	adak.lds
+
 adak_usb_reset_SOURCES = \
 	usb-reset.c
+
 
 EXTRA_DIST = \
 	NEWS \
