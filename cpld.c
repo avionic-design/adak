@@ -103,6 +103,7 @@ struct cli {
 	bool help;
 	bool write_feature_row;
 	bool write_usercode;
+	bool verify;
 	int verbose;
 	int write_format;
 	char *input_file;
@@ -1221,6 +1222,52 @@ exec_read_out:
 	return ret;
 }
 
+
+static int exec_verify(struct cli *cli, int argc, char *argv[])
+{
+	int ret, err, i;
+
+	info_print(cli, "Verifying CPLD...\n");
+
+	if (cli->jedec_file.file_valid == 0) {
+		error_print(cli, "%s: write must be performed prior to verify\n",
+					__func__);
+		ret = -ENODATA;
+		goto exec_verify_out;
+	}
+
+	ret = cpld_enable_cfg_if_transparent(cli->fd, cli->slave);
+	if (ret) {
+		error_print(cli, "%s: enabling cfg if failed\n", __func__);
+		goto exec_verify_out;
+	}
+
+	ret = cpld_set_flash_address(cli->fd, cli->slave, CPLD_MEM_CFG_FLASH, 0);
+	if (ret) {
+		error_print(cli, "%s: setting cfg flash address failed\n", __func__);
+		goto exec_verify_end;
+	}
+
+	for (i = 0; i < cli->jedec_file.num_pages; i += 1) {
+		ret = verify_page(cli, cli->jedec_file.pages[i]);
+		if (ret)
+			error_print(cli, "%s: verify failed at page %d\n", __func__, i + 1);
+		goto exec_verify_end;
+	}
+
+exec_verify_end:
+	err = cpld_disable_cfg_if(cli->fd, cli->slave);
+	if (err) {
+		error_print(cli, "%s: disabling cfg if  failed\n", __func__);
+		if (!ret)
+			ret = err;
+	}
+
+exec_verify_out:
+	info_print(cli, "Verifying CPLD %s\n", ret ? "failed" : "was successful");
+	return ret;
+}
+
 static int exec_write(struct cli *cli, int argc, char *argv[])
 {
 	int ret, err, i;
@@ -1375,52 +1422,7 @@ exec_write_end:
 
 exec_write_out:
 	info_print(cli, "Writing to CPLD %s\n", ret ? "failed" : "was successful");
-	return ret;
-}
-
-static int exec_verify(struct cli *cli, int argc, char *argv[])
-{
-	int ret, err, i;
-
-	info_print(cli, "Verifying CPLD...\n");
-
-	if (cli->jedec_file.file_valid == 0) {
-		error_print(cli, "%s: write must be performed prior to verify\n",
-					__func__);
-		ret = -ENODATA;
-		goto exec_verify_out;
-	}
-
-	ret = cpld_enable_cfg_if_transparent(cli->fd, cli->slave);
-	if (ret) {
-		error_print(cli, "%s: enabling cfg if failed\n", __func__);
-		goto exec_verify_out;
-	}
-
-	ret = cpld_set_flash_address(cli->fd, cli->slave, CPLD_MEM_CFG_FLASH, 0);
-	if (ret) {
-		error_print(cli, "%s: setting cfg flash address failed\n", __func__);
-		goto exec_verify_end;
-	}
-
-	for (i = 0; i < cli->jedec_file.num_pages; i += 1) {
-		ret = verify_page(cli, cli->jedec_file.pages[i]);
-		if (ret)
-			error_print(cli, "%s: verify failed at page %d\n", __func__, i + 1);
-		goto exec_verify_end;
-	}
-
-exec_verify_end:
-	err = cpld_disable_cfg_if(cli->fd, cli->slave);
-	if (err) {
-		error_print(cli, "%s: disabling cfg if  failed\n", __func__);
-		if (!ret)
-			ret = err;
-	}
-
-exec_verify_out:
-	info_print(cli, "Verifying CPLD %s\n", ret ? "failed" : "was successful");
-	return ret;
+	return ret ? ret : cli->verify ? exec_verify(cli, argc, argv) : 0;
 }
 
 static int exec_devinfo(struct cli *cli, int argc, char *argv[])
@@ -1507,7 +1509,6 @@ struct command {
 } static commands[] = {
 	{ "read", exec_read },
 	{ "write", exec_write },
-	{ "verify", exec_verify },
 	{ "devinfo", exec_devinfo },
 };
 
@@ -1523,6 +1524,7 @@ static const char help_options[] = "Options:\n"
 	"  -f, --feature-row   Write feature row as well (not recommended).\n"
 	"  -h, --help          Display help screen and exit.\n"
 	"  -i, --input-file    Path to JEDEC input file the CPLD's cfg flash is written from.\n"
+	"  -n, --non-verified  Do not verify written CPLD image (not recommended).\n"
 	"  -o, --output-file   Path to output file CPLD's cfg flash is written to.\n"
 	"  -s, --slave         I2C slave address the CPLD responds to.\n"
 	"  -u, --no-usercode   Do not write the USERCODE.\n"
@@ -1552,6 +1554,7 @@ static int parse_command_line(struct cli *cli, int argc, char *argv[])
 		{ "feature-row",  0, NULL, 'f' },
 		{ "help",         0, NULL, 'h' },
 		{ "input-file",   1, NULL, 'i' },
+		{ "non-verified", 0, NULL, 'n' },
 		{ "output-file",  1, NULL, 'o' },
 		{ "slave",        1, NULL, 's' },
 		{ "no-usercode",  0, NULL, 'u' },
@@ -1567,8 +1570,9 @@ static int parse_command_line(struct cli *cli, int argc, char *argv[])
 	cli->write_feature_row = false;
 	cli->write_usercode = true;
 	cli->write_format = CPLD_WRITE_FMT_HEX;
+	cli->verify = true;
 
-	while ((opt = getopt_long(argc, argv, "b:Bfhi:o:s:uvV", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "b:Bfhi:no:s:uvV", options, NULL)) != -1) {
 		switch (opt) {
 		case 'b':
 			cli->bus = optarg;
@@ -1588,6 +1592,10 @@ static int parse_command_line(struct cli *cli, int argc, char *argv[])
 
 		case 'i':
 			cli->input_file = optarg;
+			break;
+
+		case 'n':
+			cli->verify = false;
 			break;
 
 		case 'o':
