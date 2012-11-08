@@ -1633,7 +1633,7 @@ int main(int argc, char *argv[])
 	int i, cmd;
 
 	err = parse_command_line(&cli, argc, argv);
-	if (err < 0) {
+	if (err < 0 || err >= argc) {
 		usage(stderr, argv[0]);
 		return 1;
 	}
