@@ -1,5 +1,5 @@
 AC_PREREQ(2.67)
-AC_INIT([adak], [0.2.3], [bugs@avionic-design.de])
+AC_INIT([adak], [0.2.4], [bugs@avionic-design.de])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_HEADER([config.h])

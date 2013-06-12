@@ -1,5 +1,10 @@
-Release x.y.z (YYYY-MM-DD)
+Release 0.2.4 (2013-06-12)
 ==========================
+- Add adak-sx8634 utility to dump information about Semtech SX8634 controllers
+  and reprogram them with a different I2C slave address.
+- Add adak-usb-reset utility that can be used to reset a given USB device.
+- Add adak-cpld utility to read and write MachXO2-1200/640U devices.
+- Do not build -Werror by default.
 
 Release 0.2.2 (2011-07-18)
 ==========================
