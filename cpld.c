@@ -28,56 +28,47 @@
 #include "i2c.h"
 #include "utils.h"
 
+#define debug_print(cli, fmt, arg...)		\
+	do {					\
+		if (cli->verbose > 2)		\
+			printf(fmt, ##arg);	\
+	} while (0)
 
-#ifndef ARRAY_SIZE
-	#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
-#endif
+#define warn_print(cli, fmt, arg...)		\
+	do {					\
+		if (cli->verbose > 1)		\
+			printf(fmt, ##arg);	\
+	} while (0)
 
-#ifndef DIV_ROUND_UP
-	#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
-#endif
+#define error_print(cli, fmt, arg...)		\
+	do {					\
+		if (cli->verbose > 0)		\
+			printf(fmt, ##arg);	\
+	} while (0)
 
-
-#define debug_print(p2cli, fmt, arg...)		\
-	{										\
-		if (p2cli->verbose > 2)	\
-			printf(fmt, ##arg);				\
-	}
-
-#define warn_print(p2cli, fmt, arg...)		\
-	{										\
-		if (p2cli->verbose > 1)	\
-			printf(fmt, ##arg);				\
-	}
-
-#define error_print(p2cli, fmt, arg...)		\
-	{										\
-		if (p2cli->verbose > 0)	\
-			printf(fmt, ##arg);				\
-	}
-
-#define info_print(p2cli, fmt, arg...)		\
-	{										\
-		if (p2cli->verbose > 0)	\
-			printf(fmt, ##arg);				\
-	}
+#define info_print(cli, fmt, arg...)		\
+	do {					\
+		if (cli->verbose > 0)		\
+			printf(fmt, ##arg);	\
+	} while (0)
 
 /* 16 bytes per config page */
-#define CPLD_CFG_PAGE_SIZE				16
+#define CPLD_CFG_PAGE_SIZE 16
+
 /* Configuration flash memory size for MachXO2-1200/640U ONLY */
-#define CPLD_CFG_FLASH_SIZE				(2175*16)
+#define CPLD_CFG_FLASH_SIZE (2175 * CPLD_CFG_PAGE_SIZE)
+
 /* User flash memory size for MachXO2-1200/640U ONLY */
-#define CPLD_UFM_SIZE					(512*16)
-/* Calculate number of pages to be read out of flash memory */
-#define CPLD_BYTES_TO_PAGES_MSB(X)		\
-		((uint8_t) ((DIV_ROUND_UP(X, CPLD_CFG_PAGE_SIZE) >> 8) & 0x3F))
-#define CPLD_BYTES_TO_PAGES_LSB(X)		 \
-		((uint8_t) (DIV_ROUND_UP(X, CPLD_CFG_PAGE_SIZE) & 0xFF))
+#define CPLD_UFM_SIZE (512 * CPLD_CFG_PAGE_SIZE)
+
 /* 4 dummy bytes are read on each transfer */
-#define CPLD_NUM_DUMMY_BYTES			4
-/* i2c-dev.c tells 8192 bytes but single page transfers are easier to handle
- * in the CPLD */
-#define CPLD_MAX_BYTES_PER_TRANSFER		\
+#define CPLD_NUM_DUMMY_BYTES 4
+
+/*
+ * i2c-dev.c tells 8192 bytes but single page transfers are easier to handle
+ * in the CPLD
+ */
+#define CPLD_MAX_BYTES_PER_TRANSFER \
 		(CPLD_CFG_PAGE_SIZE + CPLD_NUM_DUMMY_BYTES)
 
 struct jedec_file {
@@ -94,8 +85,11 @@ struct jedec_file {
 	unsigned fea_bits_valid    : 1;
 };
 
-#define CPLD_WRITE_FMT_HEX				0x0
-#define CPLD_WRITE_FMT_BINARY			0x1
+enum {
+	CPLD_FMT_HEX,
+	CPLD_FMT_BIN,
+};
+
 struct cli {
 	const char *bus;
 	uint8_t slave;
@@ -113,12 +107,13 @@ struct cli {
 	struct jedec_file jedec_file;
 };
 
-/* Following commands and information concerning MachXO2 CPLDs
+/*
+ * Following commands and information concerning MachXO2 CPLDs
  * are taken from...
- * 
+ *
  * 1) 'Lattice MachXO2 Programming and Configuration Usage Guide',
  *     TN1204, Sept. 2012
- * 
+ *
  * 2) 'Using User Flash Memory and Hardened Control Functions in
  *     MachXO2 Devices Reference Guide', TN1246, August 2012.
  *
@@ -133,28 +128,30 @@ static struct cpld_device {
 	uint32_t sz_ufm;
 } cpld_devlist[] = {
 	{
-		0x012B0043, "256",
-		(575*CPLD_CFG_PAGE_SIZE), (0*CPLD_CFG_PAGE_SIZE),
-	},{
-		0x012B1043, "640",
-		(1151*CPLD_CFG_PAGE_SIZE), (192*CPLD_CFG_PAGE_SIZE),
-	},{
-		0x012B2043, "1200/640U",
-		(2175*CPLD_CFG_PAGE_SIZE), (512*CPLD_CFG_PAGE_SIZE),
-	},{
-		0x012B3043, "2000/1200U",
-		(3198*CPLD_CFG_PAGE_SIZE), (640*CPLD_CFG_PAGE_SIZE),
-	},{
-		0x012B4043, "4000/2000U",
-		(5758*CPLD_CFG_PAGE_SIZE), (768*CPLD_CFG_PAGE_SIZE),
-	},{
-		0x012B5043, "7000",
-		(9212*CPLD_CFG_PAGE_SIZE), (2048*CPLD_CFG_PAGE_SIZE),
+		0x012b0043, "256",
+		575 * CPLD_CFG_PAGE_SIZE, 0 * CPLD_CFG_PAGE_SIZE,
+	}, {
+		0x012b1043, "640",
+		1151 * CPLD_CFG_PAGE_SIZE, 192 * CPLD_CFG_PAGE_SIZE,
+	}, {
+		0x012b2043, "1200/640U",
+		2175 * CPLD_CFG_PAGE_SIZE, 512 * CPLD_CFG_PAGE_SIZE,
+	}, {
+		0x012b3043, "2000/1200U",
+		3198 * CPLD_CFG_PAGE_SIZE, 640 * CPLD_CFG_PAGE_SIZE,
+	}, {
+		0x012b4043, "4000/2000U",
+		5758 * CPLD_CFG_PAGE_SIZE, 768 * CPLD_CFG_PAGE_SIZE,
+	}, {
+		0x012b5043, "7000",
+		9212 * CPLD_CFG_PAGE_SIZE, 2048 * CPLD_CFG_PAGE_SIZE,
 	},
 };
-#define CPLD_DEVID_HC_DEVICE_BIT			0x00008000
 
-static struct cpld_device *find_cpld_dev_by_id(uint32_t devid) {
+#define CPLD_DEVID_HC_DEVICE_BIT 0x00008000
+
+static struct cpld_device *find_cpld_dev_by_id(uint32_t devid)
+{
 	int i;
 
 	/* Remove 'HC device' bit for comparison */
@@ -167,9 +164,9 @@ static struct cpld_device *find_cpld_dev_by_id(uint32_t devid) {
 	return NULL;
 }
 
-static int cpld_i2c_read(int fd, uint8_t slave,
-						 uint8_t *cmd_buf, uint16_t cmd_len,
-						 uint8_t *dat_buf, uint16_t dat_len)
+static int cpld_i2c_read(int fd, uint8_t slave, uint8_t *cmd_buf,
+			 uint16_t cmd_len, uint8_t *dat_buf,
+			 uint16_t dat_len)
 {
 	int err;
 
@@ -192,9 +189,9 @@ static int cpld_i2c_read(int fd, uint8_t slave,
 	return err < 0 ? err : 0;
 }
 
-static int cpld_i2c_write(int fd, uint8_t slave,
-						 uint8_t *cmd_buf, uint16_t cmd_len,
-						 uint8_t *dat_buf, uint16_t dat_len)
+static int cpld_i2c_write(int fd, uint8_t slave, uint8_t *cmd_buf,
+			  uint16_t cmd_len, uint8_t *dat_buf,
+			  uint16_t dat_len)
 {
 	int err, msg_cnt = 2;
 
@@ -220,13 +217,14 @@ static int cpld_i2c_write(int fd, uint8_t slave,
 	return err < 0 ? err : 0;
 }
 
-#define CPLD_BUSY_FLAG		0x80
+#define CPLD_BUSY_FLAG 0x80
+
 static int cpld_read_busy_flag(int fd, uint8_t slave, uint8_t *flag)
 {
-	uint8_t cmd_buf[] = {0xF0, 0x00, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0xf0, 0x00, 0x00, 0x00 };
 
-	return cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						 flag, sizeof(*flag));
+	return cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), flag,
+			     sizeof(*flag));
 }
 
 static int cpld_busy_wait(int fd, uint8_t slave, useconds_t usec)
@@ -244,16 +242,19 @@ static int cpld_busy_wait(int fd, uint8_t slave, useconds_t usec)
 	return ret;
 }
 
-#define CPLD_STATUS_DONE		(1 <<  8)
-#define CPLD_STATUS_BUSY		(1 << 12)
-#define CPLD_STATUS_FAIL		(1 << 13)
-#define CPLD_STATUS_VERIFY		(1 << 27)
+#define CPLD_STATUS_DONE	(1 <<  8)
+#define CPLD_STATUS_BUSY	(1 << 12)
+#define CPLD_STATUS_FAIL	(1 << 13)
+#define CPLD_STATUS_VERIFY	(1 << 27)
 #define CPLD_STATUS_CFG_CHECK	((1 << 25) | (1 << 24) | (1 << 23))
+
 static int cpld_read_status_reg(int fd, uint8_t slave, uint32_t *status)
 {
-	uint8_t cmd_buf[] = {0x3C, 0x00, 0x00, 0x00};
-	int ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-							(uint8_t *) status, sizeof(*status));
+	uint8_t cmd_buf[] = { 0x3c, 0x00, 0x00, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
+			    (uint8_t *)status, sizeof(*status));
 	if (ret)
 		return ret;
 
@@ -265,8 +266,9 @@ static int cpld_read_status_reg(int fd, uint8_t slave, uint32_t *status)
 static int cpld_check_status_failed(int fd, uint8_t slave, useconds_t usec)
 {
 	uint32_t status;
-	int ret = cpld_busy_wait(fd, slave, usec);
+	int ret;
 
+	ret = cpld_busy_wait(fd, slave, usec);
 	if (ret)
 		return ret;
 
@@ -279,9 +281,11 @@ static int cpld_check_status_failed(int fd, uint8_t slave, useconds_t usec)
 
 static int cpld_read_devid(int fd, uint8_t slave, uint32_t *devid)
 {
-	uint8_t cmd_buf[] = {0xE0, 0x00, 0x00, 0x00};
-	int ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-							(uint8_t *) devid, sizeof(*devid));
+	uint8_t cmd_buf[] = { 0xe0, 0x00, 0x00, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
+			    (uint8_t *)devid, sizeof(*devid));
 	if (ret)
 		return ret;
 
@@ -290,15 +294,18 @@ static int cpld_read_devid(int fd, uint8_t slave, uint32_t *devid)
 	return 0;
 }
 
-#define CPLD_TRACE_ID_USER_POS		56
-#define CPLD_TRACE_ID_POS			0
-#define CPLD_TRACE_ID_USER_MASK		(0xFF << CPLD_TRACE_ID_USER_POS)
-#define CPLD_TRACE_ID_MASK			(0xFFFFFFFFFFFFFF << CPLD_TRACE_ID_POS)
+#define CPLD_TRACE_ID_USER_POS	56
+#define CPLD_TRACE_ID_POS	0
+#define CPLD_TRACE_ID_USER_MASK	(0xff << CPLD_TRACE_ID_USER_POS)
+#define CPLD_TRACE_ID_MASK	(0xffffffffffffff << CPLD_TRACE_ID_POS)
+
 static int cpld_read_traceid(int fd, uint8_t slave, uint64_t *traceid)
 {
-	uint8_t cmd_buf[] = {0x19, 0x00, 0x00, 0x00};
-	int ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-							(uint8_t *) traceid, sizeof(*traceid));
+	uint8_t cmd_buf[] = { 0x19, 0x00, 0x00, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
+			    (uint8_t *)traceid, sizeof(*traceid));
 	if (ret)
 		return ret;
 
@@ -310,44 +317,55 @@ static int cpld_read_traceid(int fd, uint8_t slave, uint64_t *traceid)
 /* Transparent mode -> user logic remains working */
 static int cpld_enable_cfg_if_transparent(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0x74, 0x08, 0x00};
-	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
+	uint8_t cmd_buf[] = { 0x74, 0x08, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 
 	return ret ? ret : cpld_check_status_failed(fd, slave, 0);
 }
 
 /* Offline mode -> user logic stops */
+#if 0
 static int cpld_enable_cfg_if_offline(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0xC6, 0x08, 0x00};
-	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
+	uint8_t cmd_buf[] = { 0xc6, 0x08, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 
 	return ret ? ret : cpld_busy_wait(fd, slave, 0);
 }
+#endif
 
-#define CPLD_ERASE_SRAM				0x01
+#define CPLD_ERASE_SRAM			0x01
 #define CPLD_ERASE_FEATURE_ROW		0x02
 #define CPLD_ERASE_CONFIG_FLASH		0x04
-#define CPLD_ERASE_UFM				0x08
-#define CPLE_ERASE_MASK								\
-		(CPLD_ERASE_SRAM | CPLD_ERASE_FEATURE_ROW |	\
-		CPLD_ERASE_CONFIG_FLASH | CPLD_ERASE_UFM)
+#define CPLD_ERASE_UFM			0x08
+#define CPLE_ERASE_MASK			(CPLD_ERASE_SRAM | \
+					 CPLD_ERASE_FEATURE_ROW | \
+					 CPLD_ERASE_CONFIG_FLASH | \
+					 CPLD_ERASE_UFM)
+
 /* EN required */
 static int cpld_erase(int fd, uint8_t slave, uint8_t mode)
 {
-	uint8_t cmd_buf[] = {0x0E, mode & CPLE_ERASE_MASK, 0x00, 0x00};
-	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						 NULL, 0);
+	uint8_t cmd_buf[] = { 0x0e, mode & CPLE_ERASE_MASK, 0x00, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 
 	return ret ? ret : cpld_check_status_failed(fd, slave, 0);
 }
 
 /* EN required */
+#if 0
 static int cpld_erase_ufm(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0xCB, 0x00, 0x00, 0x00};
-	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-							 NULL, 0);
+	uint8_t cmd_buf[] = { 0xcb, 0x00, 0x00, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 
 	return ret ? ret : cpld_busy_wait(fd, slave, 0);
 }
@@ -355,48 +373,50 @@ static int cpld_erase_ufm(int fd, uint8_t slave)
 /* EN required */
 static int cpld_reset_cfg_flash_address(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0x46, 0x00, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0x46, 0x00, 0x00, 0x00 };
 
-	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						  NULL, 0);
+	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 }
 
 /* EN required */
 static int cpld_reset_ufm_address(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0x47, 0x00, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0x47, 0x00, 0x00, 0x00 };
 
-	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						  NULL, 0);
+	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 }
+#endif
 
-#define CPLD_MEM_CFG_FLASH				0x00
-#define CPLD_MEM_UFM					0x40
-#define CPLD_MEM_MASK					(CPLD_MEM_CFG_FLASH | CPLD_MEM_UFM)
+#define CPLD_MEM_CFG_FLASH		0x00
+#define CPLD_MEM_UFM			0x40
+#define CPLD_MEM_MASK			(CPLD_MEM_CFG_FLASH | CPLD_MEM_UFM)
 
-#define CPLD_PAGE_ADDR_MSBYTE(X)		(((X) >> 8) & 0x3F)
-#define CPLD_PAGE_ADDR_LSBYTE(X)		((X)& 0xFF)
+#define CPLD_PAGE_ADDR_MSBYTE(x)	(((x) >> 8) & 0x3f)
+#define CPLD_PAGE_ADDR_LSBYTE(x)	((x) & 0xff)
+
 /* EN required */
 static int cpld_set_flash_address(int fd, uint8_t slave, uint8_t mem,
-								  uint16_t addr)
+				  uint16_t addr)
 {
-	uint8_t cmd_buf[] = {0xB4, 0x00, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0xb4, 0x00, 0x00, 0x00 };
 	uint8_t data[] = {
 		mem & CPLD_MEM_MASK, 0x00,
 		CPLD_PAGE_ADDR_MSBYTE(addr),
 		CPLD_PAGE_ADDR_LSBYTE(addr),
 	};
 
-	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						  data, ARRAY_SIZE(data));
+	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), data,
+			      ARRAY_SIZE(data));
 }
 
 /* EN required */
 static int cpld_program_page(int fd, uint8_t slave, uint8_t *page)
 {
-	uint8_t cmd_buf[] = {0x70, 0x00, 0x00, 0x01};
-	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-							 page, CPLD_CFG_PAGE_SIZE);
+	uint8_t cmd_buf[] = { 0x70, 0x00, 0x00, 0x01 };
+	int ret;
+
+	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), page,
+			     CPLD_CFG_PAGE_SIZE);
 
 	return ret ? ret : cpld_busy_wait(fd, slave, 0);
 }
@@ -404,13 +424,13 @@ static int cpld_program_page(int fd, uint8_t slave, uint8_t *page)
 /* EN required */
 static int cpld_program_usercode(int fd, uint8_t slave, uint32_t usercode)
 {
-	uint8_t cmd_buf[] = {0xC2, 0x00, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0xc2, 0x00, 0x00, 0x00 };
 	int ret;
 
 	usercode = htobe32(usercode);
 
 	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						 (uint8_t *) &usercode, sizeof(usercode));
+			     (uint8_t *)&usercode, sizeof(usercode));
 
 	return ret ? ret : cpld_check_status_failed(fd, slave, 0);
 }
@@ -418,9 +438,11 @@ static int cpld_program_usercode(int fd, uint8_t slave, uint32_t usercode)
 /* EN -> '0': read out of CFG sector, '1': read out of SRAM */
 static int cpld_read_usercode(int fd, uint8_t slave, uint32_t *usercode)
 {
-	uint8_t cmd_buf[] = {0xC0, 0x00, 0x00, 0x00};
-	int ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-							(uint8_t *) usercode, sizeof(*usercode));
+	uint8_t cmd_buf[] = { 0xc0, 0x00, 0x00, 0x00 };
+	int ret;
+		
+	ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
+			    (uint8_t *)usercode, sizeof(*usercode));
 	if (ret)
 		return ret;
 
@@ -436,18 +458,20 @@ struct cpld_feature_row {
 	uint16_t reserved;
 } __attribute__((packed));
 
-#define CPLD_FROW_I2C_SLAVE_ADDR_MASK		0x0000FF0000000000
-#define CPLD_FROW_TRACE_ID_MASK				0x000000FF00000000
-#define CPLD_FROW_CUSTOM_ID_MASK			0x00000000FFFFFFFF
+#define CPLD_FROW_I2C_SLAVE_ADDR_MASK	0x0000FF0000000000
+#define CPLD_FROW_TRACE_ID_MASK		0x000000FF00000000
+#define CPLD_FROW_CUSTOM_ID_MASK	0x00000000FFFFFFFF
+
 /* EN required */
 static int cpld_write_feature_row(int fd, uint8_t slave, uint64_t feature_row)
 {
-	uint8_t cmd_buf[] = {0xE4, 0x00, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0xe4, 0x00, 0x00, 0x00 };
 	int ret;
 
 	feature_row = htobe64(feature_row);
+
 	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						 (uint8_t *) &feature_row, sizeof(feature_row));
+			     (uint8_t *)&feature_row, sizeof(feature_row));
 
 	return ret ? ret : cpld_check_status_failed(fd, slave, 0);
 }
@@ -455,9 +479,11 @@ static int cpld_write_feature_row(int fd, uint8_t slave, uint64_t feature_row)
 /* EN required */
 static int cpld_read_feature_row(int fd, uint8_t slave, uint64_t *feature_row)
 {
-	uint8_t cmd_buf[] = {0xE7, 0x00, 0x00, 0x00};
-	int ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-							(uint8_t *) feature_row, sizeof(*feature_row));
+	uint8_t cmd_buf[] = { 0xe7, 0x00, 0x00, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
+			    (uint8_t *)feature_row, sizeof(*feature_row));
 	if (ret)
 		return ret;
 
@@ -475,15 +501,17 @@ static int cpld_read_feature_row(int fd, uint8_t slave, uint64_t *feature_row)
 #define CPLD_FEA_BITS_INITN_PERSIST				(1 <<  6)
 #define CPLD_FEA_BITS_PROGRAMN_PERSIST			(1 <<  5)
 #define CPLD_FEA_BITS_MY_ASSP_PERSIST			(1 <<  4)
+
 /* EN required */
 static int cpld_write_fea_bits(int fd, uint8_t slave, uint16_t fea_bits)
 {
-	uint8_t cmd_buf[] = {0xF8, 0x00, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0xf8, 0x00, 0x00, 0x00 };
 	int ret;
 
 	fea_bits = htobe16(fea_bits);
+
 	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-						 (uint8_t *) &fea_bits, sizeof(fea_bits));
+			     (uint8_t *)&fea_bits, sizeof(fea_bits));
 
 	return ret ? ret : cpld_check_status_failed(fd, slave, 0);
 }
@@ -491,9 +519,11 @@ static int cpld_write_fea_bits(int fd, uint8_t slave, uint16_t fea_bits)
 /* EN required */
 static int cpld_read_fea_bits(int fd, uint8_t slave, uint16_t *fea_bits)
 {
-	uint8_t cmd_buf[] = {0xFB, 0x00, 0x00, 0x00};
-	int ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
-							(uint8_t *) fea_bits, sizeof(*fea_bits));
+	uint8_t cmd_buf[] = { 0xfb, 0x00, 0x00, 0x00 };
+	int ret;
+
+	ret = cpld_i2c_read(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf),
+			    (uint8_t *)fea_bits, sizeof(*fea_bits));
 	if (ret)
 		return ret;
 
@@ -504,16 +534,17 @@ static int cpld_read_fea_bits(int fd, uint8_t slave, uint16_t *fea_bits)
 
 static int cpld_bypass(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0xFF, 0xFF, 0xFF, 0xFF};
+	uint8_t cmd_buf[] = { 0xff, 0xff, 0xff, 0xff };
 
 	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 }
 
 static int cpld_disable_cfg_if(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0x26, 0x00, 0x00};
-	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
+	uint8_t cmd_buf[] = { 0x26, 0x00, 0x00 };
+	int ret;
 
+	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 	if (ret)
 		return ret;
 
@@ -524,7 +555,7 @@ static int cpld_disable_cfg_if(int fd, uint8_t slave)
 
 static int cpld_refresh(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0x79, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0x79, 0x00, 0x00 };
 
 	return cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 }
@@ -532,9 +563,11 @@ static int cpld_refresh(int fd, uint8_t slave)
 /* EN required */
 static int cpld_set_program_done(int fd, uint8_t slave)
 {
-	uint8_t cmd_buf[] = {0x5E, 0x00, 0x00, 0x00};
+	uint8_t cmd_buf[] = { 0x5e, 0x00, 0x00, 0x00 };
 	uint32_t status;
-	int ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
+	int ret;
+
+	ret = cpld_i2c_write(fd, slave, cmd_buf, ARRAY_SIZE(cmd_buf), NULL, 0);
 	if (ret)
 		return ret;
 
@@ -555,7 +588,7 @@ static int cpld_read_cfg_flash_page(int fd, uint8_t slave, uint8_t *dest,
 {
 	int ret;
 	uint8_t rbuf[CPLD_MAX_BYTES_PER_TRANSFER];
-	uint8_t cmd_buf[] = {0x73, 0x00, 0x00, 0x01};
+	uint8_t cmd_buf[] = { 0x73, 0x00, 0x00, 0x01 };
 
 	ret = cpld_busy_wait(fd, slave, 200);
 	if (ret)
@@ -697,7 +730,7 @@ static int read_cfm_to_fd(struct cli *cli, int ofd)
 		}
 
 		/* Write (ascii-coded) binary ('0's and '1's) */
-		if (cli->write_format == CPLD_WRITE_FMT_BINARY) {
+		if (cli->write_format == CPLD_FMT_BIN) {
 			wr_bytes = ARRAY_SIZE(page) * 8;
 			ret = strntoasciibin((char *) page, ARRAY_SIZE(page),
 								 (char *) wbuf, wr_bytes);
@@ -1429,7 +1462,7 @@ static int exec_devinfo(struct cli *cli, int argc, char *argv[])
 {
 	int ret, err;
 	uint16_t fea_bits;
-	uint32_t usercode, devid;
+	uint32_t usercode, usercode2, devid;
 	uint64_t traceid;
 	struct cpld_feature_row frow;
 	struct cpld_device *cpld;
@@ -1461,6 +1494,12 @@ static int exec_devinfo(struct cli *cli, int argc, char *argv[])
 		goto exec_devinfo_out;
 	}
 
+	ret = cpld_read_usercode(cli->fd, cli->slave, &usercode2);
+	if (ret) {
+		error_print(cli, "%s: reading usercode failed\n", __func__);
+		goto exec_devinfo_end;
+	}
+
 	ret = cpld_read_feature_row(cli->fd, cli->slave, (uint64_t *) &frow);
 	if (ret) {
 		error_print(cli, "%s: reading feature row failed\n", __func__);
@@ -1483,6 +1522,7 @@ static int exec_devinfo(struct cli *cli, int argc, char *argv[])
 
 	printf("TraceID               : 0x%016"PRIX64"\n", traceid);
 	printf("Usercode              : 0x%08"PRIX32"\n", usercode);
+	printf("                        0x%08"PRIX32"\n", usercode2);
 	printf("Feature row\n");
 	printf("    I2C slave address : 0x%02X\n", frow.i2c_slave_addr);
 	printf("    TraceID           : 0x%02X\n", frow.trace_id);
@@ -1503,6 +1543,19 @@ exec_devinfo_out:
 	return ret;
 }
 
+static int exec_refresh(struct cli *cli, int argc, char *argv[])
+{
+	int err;
+
+	info_print(cli, "refreshing ...\n");
+
+	err = cpld_refresh(cli->fd, cli->slave);
+	if (err < 0)
+		error_print(cli, "failed to refresh\n");
+
+	return 0;
+}
+
 struct command {
 	const char *name;
 	int (*exec)(struct cli *cli, int argc, char *argv[]);
@@ -1510,6 +1563,7 @@ struct command {
 	{ "read", exec_read },
 	{ "write", exec_write },
 	{ "devinfo", exec_devinfo },
+	{ "refresh", exec_refresh },
 };
 
 static const char help_summary[] = ""
@@ -1569,7 +1623,7 @@ static int parse_command_line(struct cli *cli, int argc, char *argv[])
 	cli->slave = 0x40;
 	cli->write_feature_row = false;
 	cli->write_usercode = true;
-	cli->write_format = CPLD_WRITE_FMT_HEX;
+	cli->write_format = CPLD_FMT_HEX;
 	cli->verify = true;
 
 	while ((opt = getopt_long(argc, argv, "b:Bfhi:no:s:uvV", options, NULL)) != -1) {
@@ -1579,7 +1633,7 @@ static int parse_command_line(struct cli *cli, int argc, char *argv[])
 			break;
 
 		case 'B':
-			cli->write_format = CPLD_WRITE_FMT_BINARY;
+			cli->write_format = CPLD_FMT_BIN;
 			break;
 
 		case 'f':

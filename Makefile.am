@@ -8,8 +8,8 @@ bin_PROGRAMS = \
 	adak-sx8634
 
 sbin_PROGRAMS = \
-	adak-fpga \
 	adak-cpld \
+	adak-fpga \
 	adak-usb-reset
 
 libadak_la_SOURCES = \
@@ -57,7 +57,6 @@ adak_cpld_LDADD = \
 
 adak_usb_reset_SOURCES = \
 	usb-reset.c
-
 
 EXTRA_DIST = \
 	NEWS \
